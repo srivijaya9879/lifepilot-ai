@@ -1,0 +1,6 @@
+{
+  "name": "LifePilot AI",
+  "description": "Intelligent personal planning assistant powered by collaborating Agentic AI agents that turn goals into actionable, budget-verified plans.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
