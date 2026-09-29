@@ -24,6 +24,49 @@ app.get('/api/health', (req: Request, res: Response) => {
   });
 });
 
+// n8n Chatbot Webhook proxy
+const N8N_WEBHOOK_URL = 'https://srivijaya9879.app.n8n.cloud/webhook/c0b03789-a8b9-4ca8-9195-08da74578125/chat';
+
+app.post('/api/n8n-chat', async (req: Request, res: Response) => {
+  const { message, sessionId, action } = req.body;
+
+  try {
+    const response = await fetch(N8N_WEBHOOK_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        action: action || 'sendMessage',
+        sessionId: sessionId || `lifepilot-${Date.now()}`,
+        chatInput: message || '',
+      }),
+    });
+
+    const responseText = await response.text();
+    let data;
+    try {
+      data = JSON.parse(responseText);
+    } catch {
+      data = { output: responseText };
+    }
+
+    if (!response.ok) {
+      return res.status(response.status).json({
+        error: data.message || data.error || 'Workflow execution error',
+        raw: data,
+      });
+    }
+
+    return res.json(data);
+  } catch (error: any) {
+    console.error('Error forwarding to n8n webhook:', error);
+    return res.status(500).json({
+      error: error?.message || 'Failed to reach n8n webhook service',
+    });
+  }
+});
+
 // Plan generation endpoint using Gemini when key is present
 app.post('/api/plan', async (req: Request, res: Response) => {
   const { goal, inputs } = req.body;

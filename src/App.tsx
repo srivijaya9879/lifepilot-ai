@@ -8,6 +8,7 @@ import { AgentActivityModal } from './components/AgentActivityModal';
 import { PlanDashboard } from './components/PlanDashboard';
 import { ModifyPlanModal } from './components/ModifyPlanModal';
 import { SavedPlansDrawer } from './components/SavedPlansDrawer';
+import { ChatbotWidget } from './components/ChatbotWidget';
 import { AgentLog, AgentType, Plan, PlanCategory, PlanInputs, TaskItem, ChecklistItem } from './types';
 import { generateAgenticPlan, parseGoalInput } from './services/agentEngine';
 import { HYDERABAD_3DAY_PLAN } from './data/demoPlans';
@@ -18,6 +19,7 @@ export default function App() {
   const [isSavedDrawerOpen, setIsSavedDrawerOpen] = useState(false);
   const [isModifyModalOpen, setIsModifyModalOpen] = useState(false);
   const [isActivityModalOpen, setIsActivityModalOpen] = useState(false);
+  const [isChatOpen, setIsChatOpen] = useState(false);
 
   // Generation state
   const [isGenerating, setIsGenerating] = useState(false);
@@ -146,6 +148,8 @@ export default function App() {
           currentView={currentPlan ? 'plan' : 'home'}
           onNavigateHome={() => setCurrentPlan(null)}
           onScrollToSection={handleScrollToSection}
+          onToggleChat={() => setIsChatOpen((prev) => !prev)}
+          isChatOpen={isChatOpen}
         />
 
         {/* Main Content Area */}
@@ -232,6 +236,16 @@ export default function App() {
             window.scrollTo({ top: 0, behavior: 'smooth' });
           }}
           onDeletePlan={handleDeleteSavedPlan}
+        />
+
+        {/* LifePilot AI Chatbot connected to n8n Webhook */}
+        <ChatbotWidget
+          isOpen={isChatOpen}
+          onToggle={() => setIsChatOpen((prev) => !prev)}
+          onLoadGoalIntoPlanner={(goal) => {
+            setCurrentPlan(null);
+            handleStartPlanGeneration(goal);
+          }}
         />
       </div>
     </ThemeProvider>

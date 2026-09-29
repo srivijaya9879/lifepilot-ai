@@ -1,5 +1,5 @@
 import React from 'react';
-import { Sun, Moon, Bookmark, Sparkles, Plus } from 'lucide-react';
+import { Sun, Moon, Bookmark, Sparkles, Plus, MessageSquare } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 
 interface HeaderProps {
@@ -9,6 +9,8 @@ interface HeaderProps {
   currentView: 'home' | 'plan';
   onNavigateHome: () => void;
   onScrollToSection: (sectionId: string) => void;
+  onToggleChat: () => void;
+  isChatOpen: boolean;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -18,6 +20,8 @@ export const Header: React.FC<HeaderProps> = ({
   currentView,
   onNavigateHome,
   onScrollToSection,
+  onToggleChat,
+  isChatOpen,
 }) => {
   const { theme, toggleTheme } = useTheme();
 
@@ -65,6 +69,16 @@ export const Header: React.FC<HeaderProps> = ({
             Agentic Architecture
           </button>
           <button
+            onClick={onToggleChat}
+            className={`hover:text-slate-900 dark:hover:text-white transition-colors flex items-center gap-1.5 ${
+              isChatOpen ? 'text-indigo-600 dark:text-indigo-400 font-semibold' : ''
+            }`}
+          >
+            <MessageSquare className="w-3.5 h-3.5 text-indigo-500" />
+            <span>Chatbot</span>
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+          </button>
+          <button
             onClick={onOpenSavedPlans}
             className="hover:text-slate-900 dark:hover:text-white transition-colors flex items-center gap-1.5"
           >
@@ -80,6 +94,16 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Zone 3: 1-2 primary actions */}
         <div className="flex items-center gap-2 sm:gap-3">
+          <button
+            onClick={onToggleChat}
+            aria-label="Toggle LifePilot AI Chatbot"
+            title="Chat with AI Agent"
+            className="p-2 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors relative md:hidden"
+          >
+            <MessageSquare className="w-4 h-4 text-indigo-500" />
+            <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-emerald-500 rounded-full" />
+          </button>
+
           <button
             onClick={toggleTheme}
             aria-label="Toggle color theme"
