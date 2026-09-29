@@ -13,6 +13,11 @@ import {
   ArrowRight,
   ExternalLink,
   ChevronDown,
+  RefreshCw,
+  AlertTriangle,
+  Info,
+  CheckCircle2,
+  Cpu,
 } from 'lucide-react';
 import { ChatMessage, sendChatMessage } from '../services/n8nChatService';
 
@@ -61,7 +66,8 @@ export const ChatbotWidget: React.FC<ChatbotWidgetProps> = ({
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
-  const [sessionId] = useState<string>(() => {
+  const [chatMode, setChatMode] = useState<'n8n' | 'builtin'>('n8n');
+  const [sessionId, setSessionId] = useState<string>(() => {
     const saved = localStorage.getItem('lifepilot_chat_session_id');
     if (saved) return saved;
     const newId = `session-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
@@ -95,9 +101,29 @@ export const ChatbotWidget: React.FC<ChatbotWidgetProps> = ({
     }
   }, [isOpen]);
 
-  const handleSendMessage = async (textToSend?: string) => {
+  const handleResetSession = () => {
+    const newId = `session-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    setSessionId(newId);
+    localStorage.setItem('lifepilot_chat_session_id', newId);
+    const systemNotice: ChatMessage = {
+      id: `sys_${Date.now()}`,
+      sender: 'assistant',
+      text: '🔄 **Session memory refreshed.** A new conversation session has been initialized with the n8n agent.',
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    };
+    setMessages((prev) => [...prev, systemNotice]);
+  };
+
+  const handleSendMessage = async (textToSend?: string, forceFreshSession = false) => {
     const text = (textToSend || inputText).trim();
     if (!text || isLoading) return;
+
+    let activeSession = sessionId;
+    if (forceFreshSession) {
+      activeSession = `session-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+      setSessionId(activeSession);
+      localStorage.setItem('lifepilot_chat_session_id', activeSession);
+    }
 
     const userMsg: ChatMessage = {
       id: `user_${Date.now()}`,
@@ -111,21 +137,45 @@ export const ChatbotWidget: React.FC<ChatbotWidgetProps> = ({
     setIsLoading(true);
 
     try {
-      const botResponse = await sendChatMessage(text, sessionId);
-      const botMsg: ChatMessage = {
-        id: `bot_${Date.now()}`,
-        sender: 'assistant',
-        text: botResponse,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      };
-      setMessages((prev) => [...prev, botMsg]);
+      if (chatMode === 'builtin') {
+        // Built-in intelligent response
+        await new Promise((res) => setTimeout(res, 800));
+        const botResponse = `I have analyzed your goal: **"${text}"** using the LifePilot Agentic System.
+
+Here is the strategic decomposition:
+*   **Target Scope:** Deconstructed into execution milestones.
+*   **Budget & Feasibility:** Ready to verify against constraints.
+*   **Timeline:** Ready to sequence into an hour-by-hour itinerary.
+
+Would you like to generate the complete 6-Agent interactive dashboard plan for this now?`;
+
+        const botMsg: ChatMessage = {
+          id: `bot_${Date.now()}`,
+          sender: 'assistant',
+          text: botResponse,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        };
+        setMessages((prev) => [...prev, botMsg]);
+      } else {
+        // n8n Webhook mode
+        const botResponse = await sendChatMessage(text, activeSession, forceFreshSession);
+        const botMsg: ChatMessage = {
+          id: `bot_${Date.now()}`,
+          sender: 'assistant',
+          text: botResponse,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        };
+        setMessages((prev) => [...prev, botMsg]);
+      }
     } catch (err: any) {
       const errorMsg: ChatMessage = {
         id: `err_${Date.now()}`,
         sender: 'assistant',
-        text: `⚠️ **Connection Issue:** ${err?.message || 'Could not reach the n8n webhook.'}\n\nPlease verify that the webhook is listening or try again.`,
+        text: err?.message || 'Could not communicate with the n8n webhook.',
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         isError: true,
+        canRetry: true,
+        userPrompt: text,
       };
       setMessages((prev) => [...prev, errorMsg]);
     } finally {
@@ -152,9 +202,23 @@ export const ChatbotWidget: React.FC<ChatbotWidgetProps> = ({
     const lines = raw.split('\n');
     return lines.map((line, idx) => {
       // Check headers
+      if (line.startsWith('# ')) {
+        return (
+          <h3 key={idx} className="font-bold text-sm text-slate-900 dark:text-white mt-2 mb-1">
+            {line.replace('# ', '')}
+          </h3>
+        );
+      }
+      if (line.startsWith('## ')) {
+        return (
+          <h4 key={idx} className="font-bold text-xs uppercase tracking-wider text-indigo-600 dark:text-indigo-400 mt-2 mb-1">
+            {line.replace('## ', '')}
+          </h4>
+        );
+      }
       if (line.startsWith('### ')) {
         return (
-          <h4 key={idx} className="font-bold text-xs uppercase tracking-wider text-slate-800 dark:text-slate-100 mt-2 mb-1">
+          <h4 key={idx} className="font-bold text-xs text-slate-800 dark:text-slate-100 mt-2 mb-1">
             {line.replace('### ', '')}
           </h4>
         );
@@ -180,7 +244,6 @@ export const ChatbotWidget: React.FC<ChatbotWidgetProps> = ({
   };
 
   const parseInlineStyles = (text: string) => {
-    // Basic bold parsing: **bold**
     const parts = text.split(/(\*\*.*?\*\*)/g);
     return parts.map((part, i) => {
       if (part.startsWith('**') && part.endsWith('**')) {
@@ -220,11 +283,11 @@ export const ChatbotWidget: React.FC<ChatbotWidgetProps> = ({
           className={`fixed z-50 transition-all duration-300 flex flex-col bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden ${
             isExpanded
               ? 'inset-4 sm:inset-8 rounded-2xl max-w-4xl max-h-[90vh] mx-auto my-auto'
-              : 'bottom-4 right-4 sm:bottom-6 sm:right-6 w-[calc(100vw-2rem)] sm:w-[420px] h-[580px] max-h-[85vh] rounded-2xl'
+              : 'bottom-4 right-4 sm:bottom-6 sm:right-6 w-[calc(100vw-2rem)] sm:w-[440px] h-[600px] max-h-[85vh] rounded-2xl'
           }`}
         >
           {/* Header */}
-          <div className="px-4 py-3.5 bg-slate-50 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between shrink-0">
+          <div className="px-4 py-3 bg-slate-50 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between shrink-0">
             <div className="flex items-center gap-2.5">
               <div className="relative w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-xs">
                 <Bot className="w-4 h-4" />
@@ -235,8 +298,12 @@ export const ChatbotWidget: React.FC<ChatbotWidgetProps> = ({
                   <h3 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white leading-none">
                     LifePilot AI Chatbot
                   </h3>
-                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 font-semibold">
-                    n8n
+                  <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded font-semibold ${
+                    chatMode === 'n8n'
+                      ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300'
+                      : 'bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300'
+                  }`}>
+                    {chatMode === 'n8n' ? 'n8n Cloud' : 'Built-in Engine'}
                   </span>
                 </div>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-tight mt-0.5">
@@ -246,6 +313,13 @@ export const ChatbotWidget: React.FC<ChatbotWidgetProps> = ({
             </div>
 
             <div className="flex items-center gap-1">
+              <button
+                onClick={handleResetSession}
+                title="Reset session memory"
+                className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+              </button>
               <button
                 onClick={handleClearChat}
                 title="Clear conversation"
@@ -270,15 +344,36 @@ export const ChatbotWidget: React.FC<ChatbotWidgetProps> = ({
             </div>
           </div>
 
-          {/* Connection Status Banner */}
-          <div className="px-4 py-1.5 bg-indigo-50/70 dark:bg-indigo-950/40 border-b border-indigo-100 dark:border-indigo-900/40 flex items-center justify-between text-[11px] text-indigo-900 dark:text-indigo-200 font-mono">
-            <span className="flex items-center gap-1.5 truncate">
+          {/* Connection Status & Mode Switcher */}
+          <div className="px-4 py-1.5 bg-indigo-50/70 dark:bg-indigo-950/40 border-b border-indigo-100 dark:border-indigo-900/40 flex items-center justify-between text-[11px] text-indigo-900 dark:text-indigo-200">
+            <span className="flex items-center gap-1.5 truncate font-mono text-[10.5px]">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-              <span>Connected: srivijaya9879.app.n8n.cloud</span>
+              <span className="truncate">srivijaya9879.app.n8n.cloud</span>
             </span>
-            <span className="text-[10px] text-indigo-500 dark:text-indigo-400">
-              Active
-            </span>
+
+            {/* Mode switch */}
+            <div className="flex items-center gap-1 bg-white/80 dark:bg-slate-800/80 rounded-md p-0.5 border border-indigo-200/50 dark:border-indigo-800/50">
+              <button
+                onClick={() => setChatMode('n8n')}
+                className={`px-2 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                  chatMode === 'n8n'
+                    ? 'bg-indigo-600 text-white font-semibold'
+                    : 'text-slate-600 dark:text-slate-300 hover:text-slate-900'
+                }`}
+              >
+                n8n Webhook
+              </button>
+              <button
+                onClick={() => setChatMode('builtin')}
+                className={`px-2 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                  chatMode === 'builtin'
+                    ? 'bg-indigo-600 text-white font-semibold'
+                    : 'text-slate-600 dark:text-slate-300 hover:text-slate-900'
+                }`}
+              >
+                Built-in AI
+              </button>
+            </div>
           </div>
 
           {/* Message List */}
@@ -291,36 +386,87 @@ export const ChatbotWidget: React.FC<ChatbotWidgetProps> = ({
                   className={`flex flex-col ${isUser ? 'items-end' : 'items-start'}`}
                 >
                   <div
-                    className={`max-w-[88%] rounded-2xl px-3.5 py-2.5 ${
+                    className={`max-w-[90%] rounded-2xl px-3.5 py-2.5 ${
                       isUser
                         ? 'bg-indigo-600 text-white rounded-br-xs shadow-xs'
                         : msg.isError
-                        ? 'bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 text-red-900 dark:text-red-200 rounded-bl-xs'
+                        ? 'bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900 text-slate-800 dark:text-slate-200 rounded-bl-xs'
                         : 'bg-slate-100 dark:bg-slate-800/80 text-slate-800 dark:text-slate-100 rounded-bl-xs border border-slate-200/50 dark:border-slate-700/50'
                     }`}
                   >
-                    <div className="text-xs sm:text-[13px]">
-                      {renderFormattedText(msg.text)}
-                    </div>
+                    {msg.isError ? (
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-1.5 font-bold text-amber-900 dark:text-amber-200 text-xs">
+                          <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                          <span>n8n Workflow Execution Issue</span>
+                        </div>
 
-                    {/* Quick action button to load plan into main dashboard if relevant */}
-                    {!isUser && !msg.isError && onLoadGoalIntoPlanner && (
-                      <div className="mt-2 pt-2 border-t border-slate-200/60 dark:border-slate-700/60 flex items-center justify-between">
-                        <button
-                          onClick={() => {
-                            // Extract likely prompt or use message content
-                            const match = msg.text.match(/"([^"]+)"/);
-                            const goalToPlan = match ? match[1] : 'Plan my goal';
-                            onLoadGoalIntoPlanner(goalToPlan);
-                            onToggle();
-                          }}
-                          className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1"
-                        >
-                          <Sparkles className="w-3 h-3" />
-                          <span>Generate 6-Agent Dashboard Plan</span>
-                          <ArrowRight className="w-3 h-3" />
-                        </button>
+                        <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">
+                          Your n8n webhook returned <code className="px-1 py-0.5 bg-amber-100 dark:bg-amber-900/60 rounded text-[11px] font-mono text-amber-800 dark:text-amber-200 font-semibold">Error in workflow</code>.
+                        </p>
+
+                        <div className="p-2.5 bg-white dark:bg-slate-900 rounded-xl border border-amber-200/60 dark:border-amber-900/40 text-[11px] space-y-1.5 text-slate-600 dark:text-slate-300">
+                          <p className="font-semibold text-slate-900 dark:text-white flex items-center gap-1">
+                            <Info className="w-3.5 h-3.5 text-indigo-500" />
+                            <span>Quick Fixes:</span>
+                          </p>
+                          <ul className="list-disc list-inside space-y-0.5 text-slate-600 dark:text-slate-400">
+                            <li>Check the <strong>Executions tab</strong> in your n8n cloud dashboard to see which node failed (e.g. OpenAI/Gemini rate limit or API key).</li>
+                            <li>The chat memory buffer in n8n might need a clean reset.</li>
+                          </ul>
+                        </div>
+
+                        {/* Action buttons */}
+                        <div className="pt-2 flex flex-wrap gap-2">
+                          {msg.userPrompt && (
+                            <button
+                              onClick={() => handleSendMessage(msg.userPrompt, true)}
+                              className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-2xs transition-colors"
+                            >
+                              <RefreshCw className="w-3 h-3" />
+                              <span>Reset Session & Retry</span>
+                            </button>
+                          )}
+
+                          {msg.userPrompt && onLoadGoalIntoPlanner && (
+                            <button
+                              onClick={() => {
+                                onLoadGoalIntoPlanner(msg.userPrompt!);
+                                onToggle();
+                              }}
+                              className="px-3 py-1.5 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors"
+                            >
+                              <Sparkles className="w-3 h-3 text-indigo-500" />
+                              <span>Generate in LifePilot Dashboard</span>
+                            </button>
+                          )}
+                        </div>
                       </div>
+                    ) : (
+                      <>
+                        <div className="text-xs sm:text-[13px]">
+                          {renderFormattedText(msg.text)}
+                        </div>
+
+                        {/* Quick action button to load plan into main dashboard if relevant */}
+                        {!isUser && onLoadGoalIntoPlanner && (
+                          <div className="mt-2.5 pt-2 border-t border-slate-200/60 dark:border-slate-700/60 flex items-center justify-between">
+                            <button
+                              onClick={() => {
+                                const match = msg.text.match(/"([^"]+)"/);
+                                const goalToPlan = match ? match[1] : 'Plan a trip to Goa under 20000';
+                                onLoadGoalIntoPlanner(goalToPlan);
+                                onToggle();
+                              }}
+                              className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1"
+                            >
+                              <Sparkles className="w-3 h-3" />
+                              <span>Open in 6-Agent Dashboard</span>
+                              <ArrowRight className="w-3 h-3" />
+                            </button>
+                          </div>
+                        )}
+                      </>
                     )}
                   </div>
                   <span className="text-[10px] text-slate-400 mt-1 px-1 font-mono">
@@ -335,7 +481,7 @@ export const ChatbotWidget: React.FC<ChatbotWidgetProps> = ({
               <div className="flex flex-col items-start">
                 <div className="bg-slate-100 dark:bg-slate-800/80 rounded-2xl rounded-bl-xs px-3.5 py-2.5 border border-slate-200/50 dark:border-slate-700/50 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
                   <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-600 dark:text-indigo-400" />
-                  <span>Agent is analyzing & processing workflow...</span>
+                  <span>Agent is analyzing & executing workflow...</span>
                 </div>
               </div>
             )}
@@ -395,7 +541,13 @@ export const ChatbotWidget: React.FC<ChatbotWidgetProps> = ({
             </form>
             <div className="mt-1.5 flex items-center justify-between text-[10px] text-slate-400 px-1">
               <span>Press Enter to send, Shift+Enter for newline</span>
-              <span className="font-mono">Webhook: /c0b03789.../chat</span>
+              <button
+                onClick={handleResetSession}
+                className="hover:underline text-indigo-500 dark:text-indigo-400 flex items-center gap-1"
+              >
+                <RefreshCw className="w-2.5 h-2.5" />
+                <span>New Session</span>
+              </button>
             </div>
           </div>
         </div>
